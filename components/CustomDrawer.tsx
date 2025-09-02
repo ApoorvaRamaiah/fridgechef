@@ -54,7 +54,7 @@ export default function CustomDrawer(props: DrawerContentComponentProps) {
             onPress={() => router.push(item.route as any)}
           >
             <Text style={styles.navText}>{item.title}</Text>
-            <Text style={styles.navArrow}>></Text>
+            <Text style={styles.navArrow}></Text>
           </TouchableOpacity>
         ))}
       </View>
