@@ -8,7 +8,8 @@ import {
   StyleSheet, 
   Alert,
   Modal,
-  ScrollView
+  ScrollView,
+  Platform
 } from "react-native";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from "expo-router";
@@ -47,6 +48,9 @@ export default function FridgeScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showBatchAddModal, setShowBatchAddModal] = useState(false);
   const [batchInput, setBatchInput] = useState('');
+  const [showVoiceModal, setShowVoiceModal] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [voiceTranscript, setVoiceTranscript] = useState('');
   const [newItem, setNewItem] = useState<Partial<FridgeItem>>({
     name: '',
     quantity: 1,
@@ -159,6 +163,101 @@ export default function FridgeScreen() {
     Alert.alert('Success', `Added ${newItems.length} ingredient${newItems.length > 1 ? 's' : ''}!`);
   };
 
+  // Voice Input Handler
+  const startVoiceRecognition = () => {
+    setShowVoiceModal(true);
+    setIsListening(true);
+    setVoiceTranscript('');
+    
+    // Simulated voice recognition - in production use expo-speech or react-native-voice
+    Alert.alert(
+      'Voice Input',
+      'Voice recognition requires additional native modules.\n\nFor now, you can type ingredients and they\'ll be added automatically.',
+      [
+        {
+          text: 'OK',
+          onPress: () => {
+            setIsListening(false);
+          }
+        }
+      ]
+    );
+  };
+
+  const processVoiceInput = async () => {
+    if (!voiceTranscript.trim()) {
+      Alert.alert('Error', 'No ingredients detected');
+      return;
+    }
+
+    // Parse voice transcript similar to batch input
+    const ingredientNames = voiceTranscript
+      .split(/[,\n]|\sand\s/)  
+      .map(name => name.trim())
+      .filter(name => name.length > 0);
+
+    if (ingredientNames.length === 0) {
+      Alert.alert('Error', 'Could not parse ingredients');
+      return;
+    }
+
+    // Use same categorization logic as batch add
+    const newItems: FridgeItem[] = ingredientNames.map((name, index) => {
+      const lowercaseName = name.toLowerCase();
+      let category = 'Other';
+      
+      if (['tomato', 'onion', 'potato', 'carrot', 'bell pepper', 'spinach', 'lettuce', 'broccoli', 'cucumber'].some(veg => lowercaseName.includes(veg))) {
+        category = 'Vegetables';
+      } else if (['apple', 'banana', 'lemon', 'orange', 'strawberry', 'avocado', 'mango'].some(fruit => lowercaseName.includes(fruit))) {
+        category = 'Fruits';
+      } else if (['chicken', 'beef', 'pork', 'salmon', 'fish', 'meat', 'turkey'].some(meat => lowercaseName.includes(meat))) {
+        category = 'Meat';
+      } else if (['milk', 'cheese', 'yogurt', 'butter', 'cream', 'egg'].some(dairy => lowercaseName.includes(dairy))) {
+        category = 'Dairy';
+      } else if (['rice', 'pasta', 'bread', 'flour', 'oats', 'quinoa', 'wheat'].some(grain => lowercaseName.includes(grain))) {
+        category = 'Grains';
+      } else if (['salt', 'pepper', 'cumin', 'oregano', 'basil', 'cinnamon', 'garlic powder'].some(spice => lowercaseName.includes(spice))) {
+        category = 'Spices';
+      }
+
+      return {
+        id: `${Date.now()}_${index}`,
+        name,
+        quantity: 1,
+        unit: 'piece',
+        category
+      };
+    });
+
+    const updatedItems = [...fridgeItems, ...newItems];
+    setFridgeItems(updatedItems);
+    await saveFridgeItems(updatedItems);
+    
+    setVoiceTranscript('');
+    setShowVoiceModal(false);
+    Alert.alert('Success', `Added ${newItems.length} ingredient${newItems.length > 1 ? 's' : ''} via voice!`);
+  };
+
+  // Barcode Scanner Handler
+  const openBarcodeScanner = () => {
+    Alert.alert(
+      'Barcode Scanner',
+      'Barcode scanning requires camera permissions and expo-barcode-scanner.\n\nThis feature will scan product barcodes and auto-add items to your fridge using the Open Food Facts API.',
+      [
+        {
+          text: 'Learn More',
+          onPress: () => {
+            Alert.alert(
+              'Setup Instructions',
+              '1. Install: expo install expo-barcode-scanner\n2. Grant camera permissions\n3. Scan product barcodes\n4. Items auto-added with nutrition info'
+            );
+          }
+        },
+        { text: 'OK' }
+      ]
+    );
+  };
+
   const removeItem = async (itemId: string) => {
     const updatedItems = fridgeItems.filter(item => item.id !== itemId);
     setFridgeItems(updatedItems);
@@ -231,6 +330,12 @@ export default function FridgeScreen() {
       <View style={styles.header}>
         <Text style={styles.title}>My Fridge 🧊</Text>
         <View style={styles.headerButtons}>
+          <TouchableOpacity style={styles.iconButton} onPress={openBarcodeScanner}>
+            <Text style={styles.iconButtonText}>📷</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.iconButton} onPress={startVoiceRecognition}>
+            <Text style={styles.iconButtonText}>🎤</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={styles.batchAddButton} onPress={() => setShowBatchAddModal(true)}>
             <Text style={styles.batchAddButtonText}>+ Batch</Text>
           </TouchableOpacity>
@@ -459,6 +564,40 @@ export default function FridgeScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Voice Input Modal */}
+      <Modal visible={showVoiceModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Voice Input 🎤</Text>
+            <Text style={styles.modalSubtitle}>Type ingredients as you would say them</Text>
+            
+            <TextInput
+              style={styles.batchInput}
+              placeholder="e.g. tomato, onion and chicken breast\nrice, eggs, milk"
+              value={voiceTranscript}
+              onChangeText={setVoiceTranscript}
+              multiline
+              numberOfLines={8}
+              textAlignVertical="top"
+            />
+
+            <Text style={styles.helperText}>💡 Simulates voice input - type ingredients</Text>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity 
+                style={styles.cancelButton} 
+                onPress={() => setShowVoiceModal(false)}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.saveButton} onPress={processVoiceInput}>
+                <Text style={styles.saveButtonText}>Add Items</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -475,7 +614,15 @@ const styles = StyleSheet.create({
   headerButtons: {
     flexDirection: "row",
     gap: 8,
+    alignItems: 'center',
   },
+  iconButton: {
+    backgroundColor: "#FF9800",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  iconButtonText: { fontSize: 18 },
   batchAddButton: {
     backgroundColor: "#007BFF",
     paddingHorizontal: 16,
