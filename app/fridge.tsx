@@ -251,7 +251,12 @@ export default function FridgeScreen() {
           />
           
           {/* Category Filter */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryFilter}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.categoryFilter}
+            contentContainerStyle={styles.categoryFilterContent}
+          >
             <TouchableOpacity 
               style={[styles.filterChip, !selectedCategory && styles.filterChipActive]}
               onPress={() => setSelectedCategory(null)}
@@ -616,15 +621,21 @@ const styles = StyleSheet.create({
   },
   categoryFilter: {
     marginBottom: 16,
+    height: 44,
+  },
+  categoryFilterContent: {
+    alignItems: 'center',
+    paddingVertical: 0,
   },
   filterChip: {
     backgroundColor: "#fff",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
     marginRight: 8,
     borderWidth: 1,
     borderColor: "#E9ECEF",
+    alignSelf: 'center',
   },
   filterChipActive: {
     backgroundColor: "#007BFF",

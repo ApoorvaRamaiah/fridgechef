@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, ActivityIndicator, ScrollView, Image, TouchableOpacity, Alert, TextInput, Modal } from "react-native";
+import { View, Text, StyleSheet, ActivityIndicator, ScrollView, Image, TouchableOpacity, Alert, TextInput, Modal, Share } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import RatingService, { RecipeRatingSummary } from '../../services/RatingService';
@@ -198,6 +198,26 @@ export default function RecipeDetailsScreen() {
       </View>
     );
   };
+  
+  const shareRecipe = async () => {
+    try {
+      const message = `Check out this recipe: ${recipe.title}\n\n` +
+        `Ready in ${recipe.readyInMinutes || 'N/A'} minutes\n` +
+        `Servings: ${recipe.servings}\n` +
+        `Health Score: ${recipe.healthScore || 'N/A'}/100\n\n` +
+        (ratingSummary && ratingSummary.totalRatings > 0 
+          ? `⭐ Rated ${ratingSummary.averageRating.toFixed(1)}/5 by ${ratingSummary.totalRatings} users\n\n`
+          : '') +
+        `Find more recipes in SmartChef app!`;
+      
+      await Share.share({
+        message,
+        title: recipe.title
+      });
+    } catch (error) {
+      console.error('Error sharing recipe:', error);
+    }
+  };
 
   if (loading) {
     return (
@@ -220,9 +240,14 @@ export default function RecipeDetailsScreen() {
     <ScrollView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>{recipe.title}</Text>
-        <TouchableOpacity onPress={toggleFavorite} style={styles.favoriteButton}>
-          <Text style={styles.favoriteIcon}>{isFavorite ? '❤️' : '🤍'}</Text>
-        </TouchableOpacity>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity onPress={shareRecipe} style={styles.shareButton}>
+            <Text style={styles.shareIcon}>📤</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={toggleFavorite} style={styles.favoriteButton}>
+            <Text style={styles.favoriteIcon}>{isFavorite ? '❤️' : '🤍'}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
       
       <Image source={{ uri: recipe.image }} style={styles.image} />
@@ -370,6 +395,14 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   title: { fontSize: 26, fontWeight: "bold", flex: 1, marginRight: 10 },
+  headerButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  shareButton: {
+    padding: 8,
+  },
+  shareIcon: { fontSize: 22 },
   favoriteButton: {
     padding: 8,
   },
