@@ -78,20 +78,24 @@ export default function OrdersScreen() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
+      case 'pending_payment': return '#6C757D';
       case 'preparing': return '#FFC107';
       case 'picked_up': return '#17A2B8';
       case 'on_the_way': return '#28A745';
       case 'delivered': return '#6C757D';
+      case 'cancelled': return '#6C757D';
       default: return '#007BFF';
     }
   };
 
   const getStatusText = (status: string) => {
     switch (status) {
+      case 'pending_payment': return '💳 Pending Payment';
       case 'preparing': return '👨‍🍳 Preparing';
       case 'picked_up': return '🚗 Picked Up';
       case 'on_the_way': return '🛣️ On the Way';
       case 'delivered': return '✅ Delivered';
+      case 'cancelled': return '🚫 Cancelled';
       default: return '📋 Confirmed';
     }
   };
@@ -188,6 +192,33 @@ export default function OrdersScreen() {
                 <Text style={styles.estimatedDelivery}>
                   🚚 Estimated delivery: {item.estimatedDelivery}
                 </Text>
+
+                {/* Payment and Address Info */}
+                {item.payment && (
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoIcon}>💳</Text>
+                    <View style={styles.infoContent}>
+                      <Text style={styles.infoLabel}>Payment</Text>
+                      <Text style={styles.infoValue}>
+                        {item.payment.method === 'simulated' ? 'Simulated' : 'Stripe'} • {item.payment.status === 'paid' ? '✓ Paid' : '⏳ Pending'}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+                {item.deliveryAddress && (
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoIcon}>📍</Text>
+                    <View style={styles.infoContent}>
+                      <Text style={styles.infoLabel}>Delivery Address</Text>
+                      <Text style={styles.infoValue}>
+                        {item.deliveryAddress.addressLine1}{item.deliveryAddress.addressLine2 ? `, ${item.deliveryAddress.addressLine2}` : ''}
+                      </Text>
+                      <Text style={styles.infoValue}>
+                        {item.deliveryAddress.city}, {item.deliveryAddress.state} {item.deliveryAddress.postalCode}
+                      </Text>
+                    </View>
+                  </View>
+                )}
                 
                 {tracking?.driver && (
                   <Text style={styles.driverInfo}>
@@ -288,8 +319,35 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   orderTime: { fontSize: 12, color: "#6C757D", marginBottom: 4 },
-  estimatedDelivery: { fontSize: 14, color: "#28A745", fontWeight: "500", marginBottom: 4 },
+  estimatedDelivery: { fontSize: 14, color: "#28A745", fontWeight: "500", marginBottom: 8 },
   driverInfo: { fontSize: 12, color: "#495057", marginTop: 4 },
+  infoRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#E9ECEF",
+  },
+  infoIcon: {
+    fontSize: 16,
+    marginRight: 10,
+    marginTop: 2,
+  },
+  infoContent: {
+    flex: 1,
+  },
+  infoLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#6C757D",
+    marginBottom: 3,
+  },
+  infoValue: {
+    fontSize: 13,
+    color: "#2C3E50",
+    lineHeight: 18,
+  },
 
   itemsList: {
     backgroundColor: "#fff",

@@ -25,6 +25,8 @@ export interface DeliveryQuote {
   estimatedDelivery: string;
 }
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 class GroceryDeliveryService {
   private providers: DeliveryProvider[] = [
     {
@@ -115,7 +117,7 @@ class GroceryDeliveryService {
     return basePrice * quantity;
   }
 
-  async placeOrder(quote: DeliveryQuote): Promise<{ 
+  async placeOrder(quote: DeliveryQuote, options?: { address?: DeliveryAddress; paymentMethod?: 'simulated' | 'stripe_checkout'; paymentStatus?: 'paid' | 'pending' }): Promise<{ 
     success: boolean; 
     orderId?: string; 
     estimatedDelivery?: string;
@@ -140,7 +142,12 @@ class GroceryDeliveryService {
         total: quote.total,
         placedAt: new Date().toISOString(),
         estimatedDelivery: quote.estimatedDelivery,
-        status: 'confirmed'
+        status: options?.paymentStatus === 'paid' ? 'confirmed' : 'pending_payment',
+        payment: {
+          method: options?.paymentMethod || 'simulated',
+          status: options?.paymentStatus || 'pending',
+        },
+        deliveryAddress: options?.address || null,
       };
       
       const existingOrders = await AsyncStorage.getItem('orders') || '[]';
@@ -162,7 +169,7 @@ class GroceryDeliveryService {
   }
 
   async trackOrder(orderId: string): Promise<{
-    status: 'preparing' | 'picked_up' | 'on_the_way' | 'delivered';
+    status: 'preparing' | 'picked_up' | 'on_the_way' | 'delivered' | 'pending_payment' | 'cancelled';
     estimatedDelivery: string;
     driver?: {
       name: string;
