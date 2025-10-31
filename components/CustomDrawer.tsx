@@ -80,7 +80,7 @@ export default function CustomDrawer(props: DrawerContentComponentProps) {
       
       {/* Footer */}
       <View style={styles.footer}>
-        <Text style={styles.footerText}>Made with ❤️ for food lovers</Text>
+        <Text style={styles.footerText}>Made with ❤️ for food lovers © Apoorva Ramaiah</Text>
       </View>
     </ScrollView>
   );
