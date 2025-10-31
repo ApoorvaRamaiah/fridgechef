@@ -7,23 +7,40 @@ import {
   StyleSheet, 
   ActivityIndicator,
   Alert,
-  ScrollView
+  ScrollView,
+  TextInput
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import GroceryDeliveryService, { DeliveryQuote, GroceryItem } from "../services/GroceryDeliveryService";
+import GroceryDeliveryService, { DeliveryQuote, GroceryItem, DeliveryAddress } from "../services/GroceryDeliveryService";
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as WebBrowser from 'expo-web-browser';
 
 export default function GroceryOrderScreen() {
-  const { missingIngredients } = useLocalSearchParams();
+  const { missingIngredients, servings: initialServings } = useLocalSearchParams();
   const router = useRouter();
   const [quotes, setQuotes] = useState<DeliveryQuote[]>([]);
   const [loading, setLoading] = useState(true);
   const [ordering, setOrdering] = useState(false);
+  const [address, setAddress] = useState<DeliveryAddress | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<'simulated' | 'stripe_checkout'>('simulated');
+  const [servings, setServings] = useState(parseInt(initialServings as string) || 1);
 
   useEffect(() => {
     if (missingIngredients) {
       fetchQuotes();
     }
+    // Load saved address
+    (async () => {
+      const saved = await AsyncStorage.getItem('deliveryAddress');
+      if (saved) setAddress(JSON.parse(saved));
+    })();
   }, [missingIngredients]);
+  
+  useEffect(() => {
+    if (missingIngredients && !loading) {
+      fetchQuotes(); // Refetch when servings change
+    }
+  }, [servings]);
 
   const fetchQuotes = async () => {
     try {
@@ -33,7 +50,7 @@ export default function GroceryOrderScreen() {
       
       const groceryItems: GroceryItem[] = ingredients.map(name => ({
         name: name.trim(),
-        quantity: 1,
+        quantity: servings, // Scale by servings
         unit: 'piece'
       }));
 
@@ -48,36 +65,55 @@ export default function GroceryOrderScreen() {
   };
 
   const placeOrder = async (quote: DeliveryQuote) => {
-    Alert.alert(
-      `Order from ${quote.provider.name}`,
-      `Total: $${quote.total.toFixed(2)}\\nDelivery: ${quote.estimatedDelivery}\\n\\nProceed with order?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Order Now",
-          onPress: async () => {
-            setOrdering(true);
-            try {
-              const result = await GroceryDeliveryService.placeOrder(quote);
-              
-              if (result.success) {
-                Alert.alert(
-                  'Order Placed!',
-                  `Order ID: ${result.orderId}\\nEstimated delivery: ${result.estimatedDelivery}`,
-                  [{ text: 'OK', onPress: () => router.back() }]
-                );
-              } else {
-                Alert.alert('Order Failed', result.error || 'Unknown error occurred');
+    if (!address) {
+      Alert.alert('Address required', 'Please enter your delivery address before placing the order.');
+      return;
+    }
+
+    const confirmAndPlace = () => {
+      Alert.alert(
+        `Order from ${quote.provider.name}`,
+        `Total: $${quote.total.toFixed(2)}\nDelivery: ${quote.estimatedDelivery}\nPayment: ${paymentMethod === 'simulated' ? 'Simulated' : 'Stripe Checkout'}\n\nProceed with order?`,
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Order Now",
+            onPress: async () => {
+              setOrdering(true);
+              try {
+                const result = await GroceryDeliveryService.placeOrder(quote, {
+                  address,
+                  paymentMethod,
+                  paymentStatus: paymentMethod === 'simulated' ? 'paid' : 'pending',
+                });
+                
+                if (result.success) {
+                  if (paymentMethod === 'stripe_checkout' && process.env.EXPO_PUBLIC_STRIPE_CHECKOUT_URL) {
+                    // Redirect to Stripe Checkout (hosted) configured via env
+                    const checkoutUrl = `${process.env.EXPO_PUBLIC_STRIPE_CHECKOUT_URL}?amount=${Math.round(quote.total * 100)}&orderId=${encodeURIComponent(result.orderId!)}&name=${encodeURIComponent(address.fullName)}`;
+                    await WebBrowser.openBrowserAsync(checkoutUrl);
+                  }
+
+                  Alert.alert(
+                    'Order Placed!',
+                    `Order ID: ${result.orderId}\nEstimated delivery: ${result.estimatedDelivery}`,
+                    [{ text: 'OK', onPress: () => router.push('/orders') }]
+                  );
+                } else {
+                  Alert.alert('Order Failed', result.error || 'Unknown error occurred');
+                }
+              } catch (error) {
+                Alert.alert('Order Failed', 'Please try again later');
+              } finally {
+                setOrdering(false);
               }
-            } catch (error) {
-              Alert.alert('Order Failed', 'Please try again later');
-            } finally {
-              setOrdering(false);
             }
           }
-        }
-      ]
-    );
+        ]
+      );
+    };
+
+    confirmAndPlace();
   };
 
   if (loading) {
@@ -105,10 +141,55 @@ export default function GroceryOrderScreen() {
 
   return (
     <ScrollView style={styles.container}>
-      <Text style={styles.title}>🛒 Grocery Delivery</Text>
+      <Text style={styles.title}>🛍️ Grocery Delivery</Text>
       <Text style={styles.subtitle}>
         Missing ingredients: {typeof missingIngredients === 'string' ? missingIngredients : ''}
       </Text>
+      
+      {/* Servings Selector */}
+      <View style={styles.servingsSelector}>
+        <Text style={styles.servingsLabel}>Order for:</Text>
+        <View style={styles.servingsControls}>
+          <TouchableOpacity 
+            style={styles.servingsButton} 
+            onPress={() => setServings(Math.max(1, servings - 1))}
+          >
+            <Text style={styles.servingsButtonText}>−</Text>
+          </TouchableOpacity>
+          <Text style={styles.servingsValue}>{servings} {servings === 1 ? 'serving' : 'servings'}</Text>
+          <TouchableOpacity 
+            style={styles.servingsButton} 
+            onPress={() => setServings(servings + 1)}
+          >
+            <Text style={styles.servingsButtonText}>+</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Address Form */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Delivery Address</Text>
+        <AddressForm address={address} onChange={async (addr) => {
+          setAddress(addr);
+          await AsyncStorage.setItem('deliveryAddress', JSON.stringify(addr));
+        }} />
+      </View>
+
+      {/* Payment Method */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Payment</Text>
+        <View style={styles.paymentRow}>
+          <TouchableOpacity style={[styles.payOption, paymentMethod === 'simulated' && styles.payOptionActive]} onPress={() => setPaymentMethod('simulated')}>
+            <Text style={styles.payOptionText}>Simulated</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.payOption, paymentMethod === 'stripe_checkout' && styles.payOptionActive]} onPress={() => setPaymentMethod('stripe_checkout')}>
+            <Text style={styles.payOptionText}>Stripe Checkout</Text>
+          </TouchableOpacity>
+        </View>
+        {paymentMethod === 'stripe_checkout' && !process.env.EXPO_PUBLIC_STRIPE_CHECKOUT_URL && (
+          <Text style={styles.helpText}>Set EXPO_PUBLIC_STRIPE_CHECKOUT_URL in .env to enable hosted checkout redirect.</Text>
+        )}
+      </View>
 
       {quotes.map((quote, index) => (
         <View key={quote.provider.id} style={styles.quoteCard}>
@@ -179,10 +260,61 @@ export default function GroceryOrderScreen() {
   );
 }
 
+// --- Address Form Component ---
+function AddressForm({ address, onChange }: { address: DeliveryAddress | null, onChange: (a: DeliveryAddress) => void }) {
+  const [local, setLocal] = useState<DeliveryAddress>(address || {
+    fullName: '', phone: '', addressLine1: '', addressLine2: '', city: '', state: '', postalCode: '', instructions: ''
+  });
+
+  useEffect(() => {
+    if (address) setLocal(address);
+  }, [address]);
+
+  const update = (key: keyof DeliveryAddress, value: string) => {
+    const updated = { ...local, [key]: value };
+    setLocal(updated);
+    onChange(updated);
+  };
+
+  return (
+    <View>
+      <Row label="Full Name" value={local.fullName} onChange={(v) => update('fullName', v)} />
+      <Row label="Phone" value={local.phone} onChange={(v) => update('phone', v)} />
+      <Row label="Address Line 1" value={local.addressLine1} onChange={(v) => update('addressLine1', v)} />
+      <Row label="Address Line 2" value={local.addressLine2 || ''} onChange={(v) => update('addressLine2', v)} />
+      <Row label="City" value={local.city} onChange={(v) => update('city', v)} />
+      <Row label="State" value={local.state} onChange={(v) => update('state', v)} />
+      <Row label="Postal Code" value={local.postalCode} onChange={(v) => update('postalCode', v)} />
+      <Row label="Delivery Instructions" value={local.instructions || ''} onChange={(v) => update('instructions', v)} multiline />
+    </View>
+  );
+}
+
+function Row({ label, value, onChange, multiline = false }: { label: string; value: string; onChange: (v: string) => void; multiline?: boolean }) {
+  return (
+    <View style={{ marginBottom: 10 }}>
+      <Text style={{ fontSize: 12, color: '#6C757D', marginBottom: 4 }}>{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        multiline={multiline}
+        style={{ borderWidth: 1, borderColor: '#E9ECEF', borderRadius: 8, padding: 10, backgroundColor: '#fff', fontSize: 14, color: '#2C3E50' }}
+      />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff", padding: 20 },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
   title: { fontSize: 28, fontWeight: "bold", marginBottom: 10 },
+  section: { marginBottom: 16 },
+  sectionTitle: { fontSize: 16, fontWeight: '600', marginBottom: 8, color: '#495057' },
+  paymentRow: { flexDirection: 'row', gap: 10, marginBottom: 6 },
+  payOption: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: '#E9ECEF', backgroundColor: '#fff' },
+  payOptionActive: { borderColor: '#27AE60', backgroundColor: '#E8F5E8' },
+  payOptionText: { color: '#2C3E50', fontWeight: '600' },
+  helpText: { fontSize: 12, color: '#6C757D' },
   subtitle: { fontSize: 16, color: "#666", marginBottom: 20 },
   loadingText: { marginTop: 10, fontSize: 16, color: "#666" },
   
@@ -273,4 +405,45 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   footerText: { fontSize: 12, color: "#6C757D", textAlign: "center" },
+  
+  servingsSelector: {
+    backgroundColor: "#FFF9E6",
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+    borderWidth: 2,
+    borderColor: "#FFD700",
+  },
+  servingsLabel: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#2C3E50",
+    marginBottom: 10,
+  },
+  servingsControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  servingsButton: {
+    backgroundColor: "#FF6B35",
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: "center",
+    alignItems: "center",
+    marginHorizontal: 12,
+  },
+  servingsButtonText: {
+    color: "#fff",
+    fontSize: 20,
+    fontWeight: "bold",
+  },
+  servingsValue: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#2C3E50",
+    minWidth: 100,
+    textAlign: "center",
+  },
 });

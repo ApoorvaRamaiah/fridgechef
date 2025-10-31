@@ -42,7 +42,11 @@ const COMMON_INGREDIENTS = [
 export default function FridgeScreen() {
   const [fridgeItems, setFridgeItems] = useState<FridgeItem[]>([]);
   const [query, setQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showBatchAddModal, setShowBatchAddModal] = useState(false);
+  const [batchInput, setBatchInput] = useState('');
   const [newItem, setNewItem] = useState<Partial<FridgeItem>>({
     name: '',
     quantity: 1,
@@ -100,6 +104,61 @@ export default function FridgeScreen() {
     setShowAddModal(false);
   };
 
+  const addBatchItems = async () => {
+    if (!batchInput.trim()) {
+      Alert.alert('Error', 'Please enter ingredients');
+      return;
+    }
+
+    // Parse batch input - support comma or newline separated
+    const ingredientNames = batchInput
+      .split(/[,\n]/)  
+      .map(name => name.trim())
+      .filter(name => name.length > 0);
+
+    if (ingredientNames.length === 0) {
+      Alert.alert('Error', 'No valid ingredients found');
+      return;
+    }
+
+    // Create items with smart categorization
+    const newItems: FridgeItem[] = ingredientNames.map((name, index) => {
+      const lowercaseName = name.toLowerCase();
+      let category = 'Other';
+      
+      // Smart categorization
+      if (['tomato', 'onion', 'potato', 'carrot', 'bell pepper', 'spinach', 'lettuce', 'broccoli', 'cucumber'].some(veg => lowercaseName.includes(veg))) {
+        category = 'Vegetables';
+      } else if (['apple', 'banana', 'lemon', 'orange', 'strawberry', 'avocado', 'mango'].some(fruit => lowercaseName.includes(fruit))) {
+        category = 'Fruits';
+      } else if (['chicken', 'beef', 'pork', 'salmon', 'fish', 'meat', 'turkey'].some(meat => lowercaseName.includes(meat))) {
+        category = 'Meat';
+      } else if (['milk', 'cheese', 'yogurt', 'butter', 'cream', 'egg'].some(dairy => lowercaseName.includes(dairy))) {
+        category = 'Dairy';
+      } else if (['rice', 'pasta', 'bread', 'flour', 'oats', 'quinoa', 'wheat'].some(grain => lowercaseName.includes(grain))) {
+        category = 'Grains';
+      } else if (['salt', 'pepper', 'cumin', 'oregano', 'basil', 'cinnamon', 'garlic powder'].some(spice => lowercaseName.includes(spice))) {
+        category = 'Spices';
+      }
+
+      return {
+        id: `${Date.now()}_${index}`,
+        name,
+        quantity: 1,
+        unit: 'piece',
+        category
+      };
+    });
+
+    const updatedItems = [...fridgeItems, ...newItems];
+    setFridgeItems(updatedItems);
+    await saveFridgeItems(updatedItems);
+    
+    setBatchInput('');
+    setShowBatchAddModal(false);
+    Alert.alert('Success', `Added ${newItems.length} ingredient${newItems.length > 1 ? 's' : ''}!`);
+  };
+
   const removeItem = async (itemId: string) => {
     const updatedItems = fridgeItems.filter(item => item.id !== itemId);
     setFridgeItems(updatedItems);
@@ -141,19 +200,84 @@ export default function FridgeScreen() {
     router.push(`/recipes?ingredients=${ingredientNames.join(",")}`);
   };
 
+  // Filter items based on search and category
+  const getFilteredItems = () => {
+    let filtered = fridgeItems;
+    
+    // Apply search filter
+    if (searchQuery) {
+      filtered = filtered.filter(item => 
+        item.name.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+    
+    // Apply category filter
+    if (selectedCategory) {
+      filtered = filtered.filter(item => item.category === selectedCategory);
+    }
+    
+    return filtered;
+  };
+  
   const categorizedItems = INGREDIENT_CATEGORIES.map(category => ({
     category,
-    items: fridgeItems.filter(item => item.category === category)
+    items: getFilteredItems().filter(item => item.category === category)
   })).filter(group => group.items.length > 0);
+  
+  const filteredItemsCount = getFilteredItems().length;
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>My Fridge 🧊</Text>
-        <TouchableOpacity style={styles.addButton} onPress={() => setShowAddModal(true)}>
-          <Text style={styles.addButtonText}>+ Add</Text>
-        </TouchableOpacity>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity style={styles.batchAddButton} onPress={() => setShowBatchAddModal(true)}>
+            <Text style={styles.batchAddButtonText}>+ Batch</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.addButton} onPress={() => setShowAddModal(true)}>
+            <Text style={styles.addButtonText}>+ Add</Text>
+          </TouchableOpacity>
+        </View>
       </View>
+      
+      {/* Search Bar */}
+      {fridgeItems.length > 0 && (
+        <>
+          <TextInput
+            style={styles.searchBar}
+            placeholder="🔍 Search ingredients..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          
+          {/* Category Filter */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryFilter}>
+            <TouchableOpacity 
+              style={[styles.filterChip, !selectedCategory && styles.filterChipActive]}
+              onPress={() => setSelectedCategory(null)}
+            >
+              <Text style={[styles.filterChipText, !selectedCategory && styles.filterChipTextActive]}>
+                All ({fridgeItems.length})
+              </Text>
+            </TouchableOpacity>
+            {INGREDIENT_CATEGORIES.map((category) => {
+              const count = fridgeItems.filter(item => item.category === category).length;
+              if (count === 0) return null;
+              return (
+                <TouchableOpacity
+                  key={category}
+                  style={[styles.filterChip, selectedCategory === category && styles.filterChipActive]}
+                  onPress={() => setSelectedCategory(category === selectedCategory ? null : category)}
+                >
+                  <Text style={[styles.filterChipText, selectedCategory === category && styles.filterChipTextActive]}>
+                    {category} ({count})
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </>
+      )}
 
       {fridgeItems.length === 0 ? (
         <View style={styles.emptyState}>
@@ -162,6 +286,13 @@ export default function FridgeScreen() {
         </View>
       ) : (
         <>
+          {(searchQuery || selectedCategory) && (
+            <Text style={styles.filterInfo}>
+              Showing {filteredItemsCount} of {fridgeItems.length} items
+              {selectedCategory && ` in ${selectedCategory}`}
+            </Text>
+          )}
+          
           <TouchableOpacity style={styles.findRecipesButton} onPress={findRecipes}>
             <Text style={styles.findRecipesText}>🍳 Find Recipes ({fridgeItems.length} ingredients)</Text>
           </TouchableOpacity>
@@ -289,6 +420,40 @@ export default function FridgeScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Batch Add Modal */}
+      <Modal visible={showBatchAddModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Add Multiple Ingredients</Text>
+            <Text style={styles.modalSubtitle}>Enter ingredients separated by commas or new lines</Text>
+            
+            <TextInput
+              style={styles.batchInput}
+              placeholder="e.g. tomato, onion, chicken breast\nrice, eggs, milk"
+              value={batchInput}
+              onChangeText={setBatchInput}
+              multiline
+              numberOfLines={8}
+              textAlignVertical="top"
+            />
+
+            <Text style={styles.helperText}>💡 Items will be auto-categorized</Text>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity 
+                style={styles.cancelButton} 
+                onPress={() => setShowBatchAddModal(false)}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.saveButton} onPress={addBatchItems}>
+                <Text style={styles.saveButtonText}>Add All</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -302,6 +467,17 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   title: { fontSize: 28, fontWeight: "bold" },
+  headerButtons: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  batchAddButton: {
+    backgroundColor: "#007BFF",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  batchAddButtonText: { color: "#fff", fontWeight: "bold" },
   addButton: {
     backgroundColor: "#27AE60",
     paddingHorizontal: 16,
@@ -428,4 +604,65 @@ const styles = StyleSheet.create({
     flex: 0.45,
   },
   saveButtonText: { color: "#fff", fontWeight: "bold", textAlign: "center" },
+  
+  searchBar: {
+    backgroundColor: "#F8F9FA",
+    borderWidth: 1,
+    borderColor: "#E9ECEF",
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 16,
+    marginBottom: 12,
+  },
+  categoryFilter: {
+    marginBottom: 16,
+  },
+  filterChip: {
+    backgroundColor: "#fff",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: "#E9ECEF",
+  },
+  filterChipActive: {
+    backgroundColor: "#007BFF",
+    borderColor: "#007BFF",
+  },
+  filterChipText: {
+    fontSize: 13,
+    color: "#495057",
+    fontWeight: "500",
+  },
+  filterChipTextActive: {
+    color: "#fff",
+  },
+  filterInfo: {
+    fontSize: 13,
+    color: "#6C757D",
+    marginBottom: 12,
+    fontStyle: "italic",
+  },
+  batchInput: {
+    borderWidth: 1,
+    borderColor: "#DDD",
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    marginBottom: 15,
+    minHeight: 150,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: "#6C757D",
+    marginBottom: 15,
+    textAlign: "center",
+  },
+  helperText: {
+    fontSize: 12,
+    color: "#6C757D",
+    fontStyle: "italic",
+    marginBottom: 15,
+  },
 });

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { View, Text, Switch, StyleSheet } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import filterBus from "../services/FilterBus";
 
 export default function FiltersScreen() {
   const [filters, setFilters] = useState({
@@ -22,6 +23,7 @@ export default function FiltersScreen() {
     const updated = { ...filters, [key]: !filters[key] };
     setFilters(updated);
     await AsyncStorage.setItem("filters", JSON.stringify(updated));
+    filterBus.emit(updated);
   };
 
   return (

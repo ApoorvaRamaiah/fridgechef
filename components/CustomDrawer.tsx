@@ -3,6 +3,7 @@ import { View, Text, Switch, StyleSheet, TouchableOpacity, ScrollView } from "re
 import { DrawerContentComponentProps } from "@react-navigation/drawer";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
+import filterBus from "../services/FilterBus";
 
 export default function CustomDrawer(props: DrawerContentComponentProps) {
   const router = useRouter();
@@ -16,6 +17,7 @@ export default function CustomDrawer(props: DrawerContentComponentProps) {
   const navigationItems = [
     { title: "🏠 Home", route: "/" },
     { title: "🧊 My Fridge", route: "/fridge" },
+    { title: "🛍️ Shopping List", route: "/shopping-list" },
     { title: "❤️ Favorites", route: "/favorites" },
     { title: "🍳 Find Recipes", route: "/recipes" },
     { title: "📦 My Orders", route: "/orders" },
@@ -34,6 +36,8 @@ export default function CustomDrawer(props: DrawerContentComponentProps) {
     const updated = { ...filters, [key]: !filters[key] };
     setFilters(updated);
     await AsyncStorage.setItem("filters", JSON.stringify(updated));
+    // Notify listeners to refresh immediately
+    filterBus.emit(updated);
   };
 
   return (
@@ -76,7 +80,7 @@ export default function CustomDrawer(props: DrawerContentComponentProps) {
       
       {/* Footer */}
       <View style={styles.footer}>
-        <Text style={styles.footerText}>Made with ❤️ for food lovers</Text>
+        <Text style={styles.footerText}>Made with ❤️ for food lovers © Apoorva Ramaiah</Text>
       </View>
     </ScrollView>
   );

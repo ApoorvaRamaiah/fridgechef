@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { View, Text, FlatList, StyleSheet, TouchableOpacity, ActivityIndicator, Image, RefreshControl } from "react-native";
 import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import filterBus from '../services/FilterBus';
 
 export default function RecipesScreen() {
   const { ingredients } = useLocalSearchParams(); // from query param
@@ -24,12 +25,24 @@ export default function RecipesScreen() {
       const filters = saved ? JSON.parse(saved) : {};
       setCurrentFilters(filters);
       
-      let dietParam = '';
-      let intoleranceParam = '';
+      // Build diet parameters - handle multiple diet preferences correctly
+      const dietParams = [];
+      const intoleranceParams = [];
       
-      if (filters.vegetarian) dietParam = '&diet=vegetarian';
-      if (filters.vegan) dietParam = '&diet=vegan';
-      if (filters.glutenFree) intoleranceParam = '&intolerances=gluten';
+      // Handle veg preferences - prioritize most restrictive
+      if (filters.vegan) {
+        dietParams.push('vegan');
+      } else if (filters.vegetarian) {
+        dietParams.push('vegetarian');
+      }
+      // nonVegetarian means no diet restriction, so we don't add any diet param
+      
+      if (filters.glutenFree) {
+        intoleranceParams.push('gluten');
+      }
+      
+      const dietParam = dietParams.length > 0 ? `&diet=${dietParams.join(',')}` : '';
+      const intoleranceParam = intoleranceParams.length > 0 ? `&intolerances=${intoleranceParams.join(',')}` : '';
       
       const url = `https://api.spoonacular.com/recipes/findByIngredients?ingredients=${ingredients}&number=15&apiKey=${process.env.EXPO_PUBLIC_SPOONACULAR_KEY}${dietParam}${intoleranceParam}`;
 
@@ -61,6 +74,12 @@ export default function RecipesScreen() {
 
   useEffect(() => {
     fetchRecipes();
+
+    // Live updates when filters change from drawer
+    const unsubscribe = filterBus.subscribe(() => {
+      fetchRecipes();
+    });
+    return () => { unsubscribe(); }; // Fixing the return type to match the expected Destructor type
   }, [ingredients]);
   
   // Refresh recipes when screen comes into focus (to apply filter changes)
